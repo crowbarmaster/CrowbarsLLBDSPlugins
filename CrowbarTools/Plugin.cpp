@@ -12,7 +12,7 @@
 #include <llapi/MC/ItemStack.hpp>
 #include <llapi/MC/SlotData.hpp>
 #include <llapi/MC/ListTag.hpp>
-#include <llapi/EventAPI.h>dc
+#include <llapi/EventAPI.h>
 #include <llapi/MC/Block.hpp>
 #include <llapi/RegCommandAPI.h>
 #include <vector>
