@@ -1,7 +1,7 @@
 ﻿
 #include "pch.h"
 #include "framework.h"
-#include <LLAPI.h>
+#include <llapi/LLAPI.h>
 #pragma comment(lib, "../SDK/Lib/bedrock_server_api.lib")
 #pragma comment(lib, "../SDK/Lib/bedrock_server_var.lib")
 #pragma comment(lib, "../SDK/Lib/SymDBHelper.lib")
@@ -9,7 +9,7 @@
 
 void entry();
 
-LL::Version ver(1, 0, 0);
+ll::Version ver(1, 0, 0);
 
 extern "C" {
     _declspec(dllexport) void onPostInit() {
@@ -26,8 +26,8 @@ BOOL APIENTRY DllMain( HMODULE hModule,
     switch (ul_reason_for_call)
     {
     case DLL_PROCESS_ATTACH:
-        LL::registerPlugin("OnHandTools", "Match player on-hand with your buddies!", ver, {
-    {"GitHub","https://github.com/crowbarmaster"} });
+        ll::registerPlugin("OnHandTools", "Match player on-hand with your buddies!", ver, {
+    {"Gitub","https://github.com/crowbarmaster"} });
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:
     case DLL_PROCESS_DETACH:
