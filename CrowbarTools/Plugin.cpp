@@ -34,13 +34,13 @@ enum class ArmorSlot : int32_t {
     Feet = 3
 };
 
+CSimpleIniA IniFile;
 Logger logger("CrowbarTools");
 bool keepAligned = false;
 bool TeleLearn = false;
 BlockInstance BlockX;
 BlockInstance BlockY;
 BlockInstance BlockZ;
-map<string, vector<string>> playerCommandList = map<string, vector<string>>();
 bool debugOutput = false;
 
 void CopyHotBar(Player* srcPlayer, Player* destPlayer) {
@@ -73,13 +73,54 @@ void CopyPlayerArmor(Player* srcPlayer, Player* destPlayer) {
     logger.info("Armor has been synced.");
 }
 
+void SaveConfig() {
+    IniFile.SaveFile("plugins\\CrowbarTools.ini");    
+}
+
+void LoadConfig() {
+    IniFile.Reset();
+    IniFile.LoadFile("plugins\\CrowbarTools.ini");
+}
+
+vector<string> TerminatedStringToVector(string input, string term) {
+    vector<string> output = vector<string>();
+    size_t curPos = 0;
+    size_t termPos = 0;
+    string parsed;
+    if (input.find(term) == string::npos) {
+        output.push_back(input);
+        return output;
+    }
+    while (input.find(term, curPos) != string::npos) {
+        termPos = input.find(term, curPos);
+        parsed = input.substr(curPos, termPos - curPos);
+        curPos = termPos + term.length();
+
+        output.push_back(parsed);
+    }
+    if (curPos != input.length()) {
+        output.push_back(input.substr(curPos, input.length() - curPos));
+    }
+    return output;
+}
+
+string VectorToTerminatedString(vector<string> input, string term) {
+    string output;
+    for (string entry : input) {
+        output.append(entry);
+        output.append(term);
+    }
+    return output;
+}
+
 void CommandEditForm(Player* targetPlayer) {
-    if (playerCommandList[targetPlayer->getXuid()].size() == 0) {
-        playerCommandList[targetPlayer->getXuid()].push_back("None");
+    list<CSimpleIniA::Entry> values = list<CSimpleIniA::Entry>();
+    if (!IniFile.GetAllValues("CmdList", targetPlayer->getXuid().c_str(), values)) {
+        IniFile.SetValue("CmdList", targetPlayer->getXuid().c_str(), "None");
     }
     CustomForm form = CustomForm("Command Editor");
     form.addLabel("CurCmdLbl", "Current commands:");
-    form.addDropdown("Cmds", "Command List", playerCommandList[targetPlayer->getXuid()]);
+    form.addDropdown("Cmds", "Command List", TerminatedStringToVector(IniFile.GetValue("CmdList", targetPlayer->getXuid().c_str()), ">>"));
     form.addInput("NewCmd", "NewCmd:");
     form.addToggle("SaveToggle", "Save Command");
     form.addToggle("DelToggle", "Delete Command");
@@ -88,6 +129,7 @@ void CommandEditForm(Player* targetPlayer) {
         if (mp.empty()) {
             return;
         }
+        vector<string> currentCmds = TerminatedStringToVector(IniFile.GetValue("CmdList", pl->getXuid().c_str()), ">>");
         bool saveToggle = mp["SaveToggle"]->getBool();
         bool delToggle = mp["DelToggle"]->getBool();
         string newCmd = mp["NewCmd"]->getString();
@@ -95,52 +137,34 @@ void CommandEditForm(Player* targetPlayer) {
         if ((saveToggle && delToggle) || (!saveToggle && !delToggle)) {
             return;
         }
-        if (playerCommandList[playerXuid].size() == 1 && playerCommandList[playerXuid][0] == "None") {
-            playerCommandList[playerXuid].erase(playerCommandList[playerXuid].begin());
+        if (currentCmds.size() == 1 && currentCmds[0] == "None") {
+            currentCmds.erase(currentCmds.begin());
         }
         if (saveToggle) {
             if (newCmd == "") {
                 return;
             }
-            size_t termPos = 0;
-            size_t curPos = 0;
-            string term = ">>";
-            string parsed;
-            if (newCmd.find(term, curPos) == string::npos) {
-                playerCommandList[playerXuid].push_back(newCmd);
-            }
-            else
-            {
-                while (newCmd.find(term, curPos) != string::npos) {
-                    termPos = newCmd.find(term, curPos);
-                    parsed = newCmd.substr(curPos, termPos - curPos);
-                    curPos = termPos + term.length();
-                    if (!playerCommandList.contains(playerXuid)) {
-                        playerCommandList.insert(pair<string, vector<string>>(pl->getXuid(), vector<string>()));
-                        playerCommandList[playerXuid].push_back(parsed);
-                    }
-                    else {
-                        playerCommandList[playerXuid].push_back(parsed);
-                    }
-                }
-                parsed = newCmd.substr(curPos, newCmd.length() - curPos);
-                playerCommandList[playerXuid].push_back(parsed);
+            vector<string> splitStr = TerminatedStringToVector(newCmd, ">>");
+            for (string entry : splitStr) {
+                currentCmds.push_back(entry);
             }
         }
         if (delToggle && dropCmd != "None") {
-                for (int i = 0; i < playerCommandList[playerXuid].size(); i++) {
-                    if (playerCommandList[playerXuid][i] == dropCmd) {
-                        playerCommandList[playerXuid].erase(playerCommandList[playerXuid].begin() + i);
+                for (int i = 0; i < currentCmds.size(); i++) {
+                    if (currentCmds[i] == dropCmd) {
+                        currentCmds.erase(currentCmds.begin() + i);
                     }
                 }
         }
+        IniFile.SetValue("CmdList", pl->getXuid().c_str(), VectorToTerminatedString(currentCmds, ">>").c_str());
+        SaveConfig();
         });
-
 }
 
 void RunCommandList(Player* targetPlayer) {
-    if (playerCommandList[targetPlayer->getXuid()].size() != 0) {
-        for (string cmd : playerCommandList[targetPlayer->getXuid()]) {
+    vector<string> currentCmds = TerminatedStringToVector(IniFile.GetValue("CmdList", targetPlayer->getXuid().c_str()), ">>");
+    if (currentCmds.size() != 0) {
+        for (string cmd : currentCmds) {
             targetPlayer->runcmd(cmd);
             Sleep(500);
         }
@@ -267,7 +291,7 @@ public:
 
 void entry()
 {
-
+    LoadConfig();
     Event::PlayerInventoryChangeEvent::subscribe_ref([](const Event::PlayerInventoryChangeEvent& ev) {
         if (debugOutput) {
             logger.info("PlayerInventoryChangeEvent");
