@@ -35,31 +35,34 @@ enum class ArmorSlot : int32_t {
 };
 
 CSimpleIniA IniFile;
+
+string configPath = "plugins/CrowbarTools.ini";
 Logger logger("CrowbarTools");
-bool keepAligned = false;
-bool TeleLearn = false;
-BlockInstance BlockX;
-BlockInstance BlockY;
-BlockInstance BlockZ;
+string sourceXUID;
+string targetXUID;
+map<string, string> playerInvSyncMap = map<string, string>();
+bool copyBagLock = false;
 bool debugOutput = false;
 
 void CopyHotBar(Player* srcPlayer, Player* destPlayer) {
     for (int i = 0; i < 9; i++) {
-        ItemStack temp(destPlayer->getInventory().getItem(i));
-        srcPlayer->getInventory().setItem(i, temp);
+        ItemStack temp(srcPlayer->getInventory().getItem(i));
+        destPlayer->getInventory().setItem(i, temp);
     }
-    srcPlayer->sendInventory(false);
+    destPlayer->sendInventory(false);
     logger.info("Hot bar has been synced.");
 }
 
 void CopyPlayerBag(Player* srcPlayer, Player* destPlayer) {
-    Container& inv = destPlayer->getInventory();
+    copyBagLock = true;
+    Container& inv = srcPlayer->getInventory();
     for (int i = 0; i < inv.getSize(); i++) {
         ItemStack temp(inv.getItem(i));
-        srcPlayer->getInventory().setItem(i, temp);
+        destPlayer->getInventory().setItem(i, temp);
     }
-    srcPlayer->sendInventory(false);
+    destPlayer->sendInventory(false);
     logger.info("Inventory has been synced.");
+    copyBagLock = false;
 }
 
 void CopyPlayerArmor(Player* srcPlayer, Player* destPlayer) {
@@ -73,13 +76,13 @@ void CopyPlayerArmor(Player* srcPlayer, Player* destPlayer) {
     logger.info("Armor has been synced.");
 }
 
-void SaveConfig() {
-    IniFile.SaveFile("plugins\\CrowbarTools.ini");    
+bool SaveConfig() {
+    return IniFile.SaveFile(configPath.c_str()) == 0;
 }
 
-void LoadConfig() {
+bool LoadConfig() {
     IniFile.Reset();
-    IniFile.LoadFile("plugins\\CrowbarTools.ini");
+    return IniFile.LoadFile(configPath.c_str()) == 0;
 }
 
 vector<string> TerminatedStringToVector(string input, string term) {
@@ -171,6 +174,13 @@ void RunCommandList(Player* targetPlayer) {
     }
 }
 
+void RemoveInvMapEntry(string key) {
+    auto entry = playerInvSyncMap.find(key);
+    if (entry != playerInvSyncMap.end()) {
+        playerInvSyncMap.erase(entry);
+    }
+}
+
 void SendPlayerToServer(Player* targetPlayer, string ipAddress, int port) {
     targetPlayer->transferServer(ipAddress, port);
 }
@@ -203,27 +213,23 @@ class CrowToolsCommands : public Command {
         switch (cmdOp)
         {
         case CrowToolsCommands::Cmds::copyArmor:
-            logger.info("Syncing " + caller->getRealName() + "'s armor...");
-            CopyPlayerArmor(caller, playerTarget);
+            logger.info("Syncing " + playerTarget->getRealName() + "'s armor...");
+            CopyPlayerArmor(playerTarget, caller);
             break;
         case CrowToolsCommands::Cmds::setArmor:
-            caller = playerTarget;
-            playerTarget = ori.getPlayer();
             logger.info("Syncing " + caller->getRealName() + "'s armor...");
             CopyPlayerArmor(caller, playerTarget);
             break;
         case CrowToolsCommands::Cmds::copyhotbar:
-            logger.info("Syncing " + caller->getRealName() + "'s hotbar...");
-            CopyHotBar(caller, playerTarget);
+            logger.info("Syncing " + playerTarget->getRealName() + "'s hotbar...");
+            CopyHotBar(playerTarget, caller);
             break;
         case CrowToolsCommands::Cmds::sethotbar:
-            caller = playerTarget;
-            playerTarget = ori.getPlayer();
             logger.info("Syncing " + caller->getRealName() + "'s hotbar...");
             CopyHotBar(caller, playerTarget);
             break;
         case CrowToolsCommands::Cmds::copyinventory:
-            logger.info("Syncing " + caller->getRealName() + "'s inventory...");
+            logger.info("Syncing " + playerTarget->getRealName() + "'s inventory...");
             CopyPlayerBag(caller, playerTarget);
             break;
         case CrowToolsCommands::Cmds::setinventory:
@@ -231,6 +237,10 @@ class CrowToolsCommands : public Command {
             playerTarget = ori.getPlayer();
             logger.info("Syncing " + caller->getRealName() + "'s inventory...");
             CopyPlayerBag(caller, playerTarget);
+            break;
+        case CrowToolsCommands::Cmds::autoinventory:
+            playerInvSyncMap[playerTarget->getXuid()] = caller->getXuid();
+            CopyPlayerBag(playerTarget, caller);
             break;
         case CrowToolsCommands::Cmds::tele2server:
             if (send2ServerSet) {
@@ -291,19 +301,52 @@ public:
 
 void entry()
 {
-    LoadConfig();
-    Event::PlayerInventoryChangeEvent::subscribe_ref([](const Event::PlayerInventoryChangeEvent& ev) {
-        if (debugOutput) {
-            logger.info("PlayerInventoryChangeEvent");
-            for (int i = 0; i < ev.mPlayer->getInventory().getContainerSize(); i++) {
-                logger.info(ev.mPlayer->getInventory().getSlot(i)->toDebugString());
-            }
-            logger.info(ev.mNewItemStack->toDebugString());
+    if (!LoadConfig()) {
+        logger.warn("Could not open CrowbarTools.ini from the plugins folder.");
+    }
+    string debug = IniFile.GetValue("Settings", "DebugEnabled");
+    debugOutput = debug == "true" ? true : false;
+    Event::PlayerInventoryChangeEvent::subscribe([](const Event::PlayerInventoryChangeEvent& ev) {
+        if (!playerInvSyncMap.contains(ev.mPlayer->getXuid())) {
+            return true;
         }
+        string regXUID = playerInvSyncMap[ev.mPlayer->getXuid()];
+        if (regXUID == "") {
+            return true;
+        }
+        string srcXUID = ev.mPlayer->getXuid();
+        Player* src = ev.mPlayer;
+        Player* tgt = ev.mPlayer->getLevel().getPlayerByXuid(regXUID);
+        if (tgt == nullptr) {
+            playerInvSyncMap.erase(ev.mPlayer->getXuid());
+            return true;
+        }
+        if (debugOutput) {
+            logger.info("Source Player object test: " + src->getXuid());
+            logger.info("Target Player object test: " + tgt->getXuid());
+        }
+        ItemStack oldItem = ItemStack(*ev.mPreviousItemStack);
+        ItemStack newItem = ItemStack(*ev.mNewItemStack);
+        string newItemName = newItem.getName();
+        if (newItemName == "") {
+            if (debugOutput) {
+                logger.info("Old ItemStack: " + oldItem.toDebugString());
+                logger.info("Slot: {0}", ev.mSlot);
+            }
+            tgt->getInventory().setItem(ev.mSlot, newItem.EMPTY_ITEM);
+        }
+        else {
+            if (debugOutput) {
+                logger.info("New ItemStack: " + newItem.toDebugString());
+                logger.info("Slot: {0}", ev.mSlot);
+            }
+            tgt->getInventory().setItem(ev.mSlot, newItem);
+        }
+        tgt->sendInventory(true);
         return true;
-    }); 
+        });
 
-    Event::PlayerStartDestroyBlockEvent::subscribe([](const Event::PlayerStartDestroyBlockEvent& ev) {
+     Event::PlayerStartDestroyBlockEvent::subscribe([](const Event::PlayerStartDestroyBlockEvent& ev) {
         if (debugOutput) {
             logger.info("PlayerStartDestroyBlockEvent");
             BlockInstance block = ev.mBlockInstance;
@@ -314,7 +357,6 @@ void entry()
 
     Event::RegCmdEvent::subscribe([](const Event::RegCmdEvent& ev) {
         CrowToolsCommands::setup(ev.mCommandRegistry);
-
         return true;
     });
 }
