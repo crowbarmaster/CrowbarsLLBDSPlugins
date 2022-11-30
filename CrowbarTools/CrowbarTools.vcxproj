@@ -166,9 +166,12 @@
       <EnableUAC>false</EnableUAC>
       <DelayLoadDLLs>bedrock_server.dll</DelayLoadDLLs>
       <AdditionalLibraryDirectories>$(ProjectDir)..\SDK\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <Version>
+      </Version>
     </Link>
     <PreBuildEvent>
-      <Command>if not exist $(SolutionDir)SDK\Lib\bedrock_server_api.lib goto process
+      <Command>powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -File update_version.ps1 "./version.h"
+if not exist $(SolutionDir)SDK\Lib\bedrock_server_api.lib goto process
 if not exist $(SolutionDir)SDK\Lib\bedrock_server_var.lib goto process
 goto end
 
@@ -192,6 +195,9 @@ copy /Y $(TargetPath) $(LocalDebuggerWorkingDirectory)\plugins\
   <ItemGroup>
     <ClInclude Include="framework.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="resource1.h" />
+    <ClInclude Include="version.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
@@ -202,6 +208,9 @@ copy /Y $(TargetPath) $(LocalDebuggerWorkingDirectory)\plugins\
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="Plugin.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="CrowbarTools.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

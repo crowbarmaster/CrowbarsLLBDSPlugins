@@ -6,6 +6,7 @@
 #include <llapi/LLAPI.h>
 #include <llapi/mc/Actor.hpp>
 #include <llapi/mc/Player.hpp>
+#include <llapi/mc/SimulatedPlayer.hpp>
 #include <llapi/mc/ArmorItem.hpp>
 #include <llapi/mc/Level.hpp>
 #include <llapi/mc/Inventory.hpp>
@@ -38,8 +39,6 @@ CSimpleIniA IniFile;
 
 string configPath = "plugins/CrowbarTools.ini";
 Logger logger("CrowbarTools");
-string sourceXUID;
-string targetXUID;
 map<string, string> playerInvSyncMap = map<string, string>();
 bool copyBagLock = false;
 bool debugOutput = false;
@@ -47,6 +46,9 @@ bool debugOutput = false;
 void CopyHotBar(Player* srcPlayer, Player* destPlayer) {
     for (int i = 0; i < 9; i++) {
         ItemStack temp(srcPlayer->getInventory().getItem(i));
+        if (debugOutput) {
+            logger.debug("Hotbar item in slot: {0}\r\n{1}", i, temp.toDebugString());
+        }
         destPlayer->getInventory().setItem(i, temp);
     }
     destPlayer->sendInventory(false);
@@ -58,6 +60,9 @@ void CopyPlayerBag(Player* srcPlayer, Player* destPlayer) {
     Container& inv = srcPlayer->getInventory();
     for (int i = 0; i < inv.getSize(); i++) {
         ItemStack temp(inv.getItem(i));
+        if (debugOutput) {
+            logger.debug("Inventory item in slot: {0}\r\n{1}", i, temp.toDebugString());
+        }
         destPlayer->getInventory().setItem(i, temp);
     }
     destPlayer->sendInventory(false);
@@ -68,7 +73,14 @@ void CopyPlayerBag(Player* srcPlayer, Player* destPlayer) {
 void CopyPlayerArmor(Player* srcPlayer, Player* destPlayer) {
     for (int i = 0; i < ARMOR_SLOT_COUNT; i++) {
         ItemStack newArm(srcPlayer->getArmor((ArmorSlot)i));
+        if (debugOutput) {
+            logger.debug("Armor item in slot: {0}\r\n{1}", i, newArm.toDebugString());
+        }
         destPlayer->setArmor((ArmorSlot)i, newArm);
+    }
+    ItemStack offHand = srcPlayer->getOffhandSlot();
+    if (debugOutput) {
+        logger.debug("Off-hand item: {0}", offHand.toDebugString());
     }
     destPlayer->setOffhandSlot(srcPlayer->getOffhandSlot());
     destPlayer->updateEquipment();
@@ -82,7 +94,12 @@ bool SaveConfig() {
 
 bool LoadConfig() {
     IniFile.Reset();
-    return IniFile.LoadFile(configPath.c_str()) == 0;
+    auto result = IniFile.LoadFile(configPath.c_str());
+    if (result != 0) {
+        IniFile.SetValue("Settings", "DebugEnabled", "false");
+        SaveConfig();
+    }
+    return true;
 }
 
 vector<string> TerminatedStringToVector(string input, string term) {
@@ -114,6 +131,17 @@ string VectorToTerminatedString(vector<string> input, string term) {
         output.append(term);
     }
     return output;
+}
+
+void VerifyPlayerAllowed(Player* player) {
+    string foundPlayer = IniFile.GetValue("Allowlist", player->getXuid().c_str(), "deny");
+    if (foundPlayer == "deny") {
+        player->kick("You have been denied access to this server. Contact server admin.");
+    }
+}
+
+void AddPlayerAllow(Player* player) {
+    IniFile.SetValue("AllowList", player->getXuid().c_str(), player->getRealName().c_str());
 }
 
 void CommandEditForm(Player* targetPlayer) {
@@ -164,6 +192,53 @@ void CommandEditForm(Player* targetPlayer) {
         });
 }
 
+void PlayerAllowForm(Player* targetPlayer) {
+    list<CSimpleIniA::Entry> values = list<CSimpleIniA::Entry>();
+    if (!IniFile.GetAllKeys("AllowList", values)) {
+        IniFile.SetValue("AllowList", targetPlayer->getXuid().c_str(), targetPlayer->getRealName().c_str());
+    }
+    CustomForm form = CustomForm("Allowlist Editor");
+    list<CSimpleIniA::Entry> entryList;
+    IniFile.GetAllKeys("Allowlist", entryList);
+    vector<string> regPlayers = vector<string>();
+    for (CSimpleIniA::Entry& entry : entryList) {
+        regPlayers.push_back(entry.pItem);
+    }
+    form.addDropdown("RegPlay", "Registered players", regPlayers);
+    form.addInput("NewPlayer", "new player:", "XUID>>PlayerName");
+    form.addToggle("SaveToggle", "Save registration");
+    form.addToggle("DelToggle", "Delete registration");
+    form.sendTo(targetPlayer, [](Player* pl, std::map<string, std::shared_ptr<Form::CustomFormElement>> mp) {
+        string playerXuid = pl->getXuid();
+        if (mp.empty()) {
+            return;
+        }
+        list<CSimpleIniA::Entry> allowedPlayers;
+        IniFile.GetAllKeys("AllowList", allowedPlayers);
+        bool saveToggle = mp["SaveToggle"]->getBool();
+        bool delToggle = mp["DelToggle"]->getBool();
+        string newPly = mp["NewPlayer"]->getString();
+        string dropPly = mp["RegPlay"]->getString();
+        if ((saveToggle && delToggle) || (!saveToggle && !delToggle)) {
+            return;
+        }
+        if (saveToggle) {
+            if (newPly == "") {
+                return;
+            }
+            vector<string> splitStr = TerminatedStringToVector(newPly, ">>");
+            if (splitStr.size() != 2) {
+                return;
+            }
+            IniFile.SetValue("AllowList", splitStr[0].c_str(), splitStr[1].c_str());
+        }
+        if (delToggle && dropPly != pl->getXuid()) {
+            IniFile.Delete("Allowlist", dropPly.c_str());
+        }
+        SaveConfig();
+        });
+}
+
 void RunCommandList(Player* targetPlayer) {
     vector<string> currentCmds = TerminatedStringToVector(IniFile.GetValue("CmdList", targetPlayer->getXuid().c_str()), ">>");
     if (currentCmds.size() != 0) {
@@ -185,6 +260,34 @@ void SendPlayerToServer(Player* targetPlayer, string ipAddress, int port) {
     targetPlayer->transferServer(ipAddress, port);
 }
 
+void RunTests(Player* caller) {
+    Player* sim = caller->getLevel().getPlayer("ServerTestes");
+    vector<Player*> playerList = Level::getAllPlayers();
+    for (Player* ply : playerList) {
+        logger.info("Player getName: " + ply->getName());
+        logger.info("Player getRealName: " + ply->getRealName());
+        logger.info("Player getXuid: " + ply->getXuid());
+        if (ply->getName() == "ServerTestes") {
+            sim = ply;
+        }
+    }
+    if (sim == nullptr) {
+        SimulatedPlayer* newPlayer = SimulatedPlayer::create("ServerTestes", *new BlockPos(0, 0, 70));
+        newPlayer->setXuid("012345678912345");
+        sim = newPlayer;
+    }
+    CopyHotBar(caller, sim);
+    for (int i = 0; i < 9; i++) {
+        logger.debug("Sim player item {0} contains {1}", i, sim->getInventory().getItem(i).toDebugString());
+    }
+    CopyPlayerBag(caller, sim);
+    int invSize = caller->getInventory().getSize();
+    for (int i = 0; i < caller->getInventory().getSize(); i++) {
+        logger.debug("Sim player inventory item {0} contains {1}", i, sim->getInventory().getItem(i).toDebugString());
+    }
+    CopyPlayerArmor(caller, sim);
+}
+
 class CrowToolsCommands : public Command {
     enum class Cmds :int {
         setArmor,
@@ -196,7 +299,8 @@ class CrowToolsCommands : public Command {
         autoinventory,
         tele2server,
         editForm,
-        runCmdList
+        runCmdList,
+        runTests
     } cmdOp;
     string targetAddress;
     int targetPort;
@@ -214,11 +318,11 @@ class CrowToolsCommands : public Command {
         {
         case CrowToolsCommands::Cmds::copyArmor:
             logger.info("Syncing " + playerTarget->getRealName() + "'s armor...");
-            CopyPlayerArmor(playerTarget, caller);
+            CopyPlayerArmor(caller, playerTarget);
             break;
         case CrowToolsCommands::Cmds::setArmor:
             logger.info("Syncing " + caller->getRealName() + "'s armor...");
-            CopyPlayerArmor(caller, playerTarget);
+            CopyPlayerArmor(playerTarget, caller);
             break;
         case CrowToolsCommands::Cmds::copyhotbar:
             logger.info("Syncing " + playerTarget->getRealName() + "'s hotbar...");
@@ -233,10 +337,8 @@ class CrowToolsCommands : public Command {
             CopyPlayerBag(caller, playerTarget);
             break;
         case CrowToolsCommands::Cmds::setinventory:
-            caller = playerTarget;
-            playerTarget = ori.getPlayer();
             logger.info("Syncing " + caller->getRealName() + "'s inventory...");
-            CopyPlayerBag(caller, playerTarget);
+            CopyPlayerBag(playerTarget, caller);
             break;
         case CrowToolsCommands::Cmds::autoinventory:
             playerInvSyncMap[playerTarget->getXuid()] = caller->getXuid();
@@ -255,6 +357,9 @@ class CrowToolsCommands : public Command {
         case CrowToolsCommands::Cmds::runCmdList:
             RunCommandList(ori.getPlayer());
             break;
+        case CrowToolsCommands::Cmds::runTests:
+            RunTests(caller);
+            break;
         default:
             break;
         }
@@ -271,6 +376,7 @@ public:
             {"sethotbar", Cmds::sethotbar},
             {"setinventory", Cmds::setinventory},
             {"autoinventory", Cmds::autoinventory},
+            {"runtests", Cmds::runTests},
         });
         registry->addEnum<Cmds>("Teleport",
             {
@@ -304,7 +410,7 @@ void entry()
     if (!LoadConfig()) {
         logger.warn("Could not open CrowbarTools.ini from the plugins folder.");
     }
-    string debug = IniFile.GetValue("Settings", "DebugEnabled");
+    string debug = IniFile.GetValue("Settings", "DebugEnabled", "false");
     debugOutput = debug == "true" ? true : false;
     Event::PlayerInventoryChangeEvent::subscribe([](const Event::PlayerInventoryChangeEvent& ev) {
         if (!playerInvSyncMap.contains(ev.mPlayer->getXuid())) {
@@ -322,23 +428,23 @@ void entry()
             return true;
         }
         if (debugOutput) {
-            logger.info("Source Player object test: " + src->getXuid());
-            logger.info("Target Player object test: " + tgt->getXuid());
+            logger.debug("Source Player object test: " + src->getXuid());
+            logger.debug("Target Player object test: " + tgt->getXuid());
         }
         ItemStack oldItem = ItemStack(*ev.mPreviousItemStack);
         ItemStack newItem = ItemStack(*ev.mNewItemStack);
         string newItemName = newItem.getName();
         if (newItemName == "") {
             if (debugOutput) {
-                logger.info("Old ItemStack: " + oldItem.toDebugString());
-                logger.info("Slot: {0}", ev.mSlot);
+                logger.debug("Old ItemStack: " + oldItem.toDebugString());
+                logger.debug("Slot: {0}", ev.mSlot);
             }
             tgt->getInventory().setItem(ev.mSlot, newItem.EMPTY_ITEM);
         }
         else {
             if (debugOutput) {
-                logger.info("New ItemStack: " + newItem.toDebugString());
-                logger.info("Slot: {0}", ev.mSlot);
+                logger.debug("New ItemStack: " + newItem.toDebugString());
+                logger.debug("Slot: {0}", ev.mSlot);
             }
             tgt->getInventory().setItem(ev.mSlot, newItem);
         }
@@ -348,9 +454,9 @@ void entry()
 
      Event::PlayerStartDestroyBlockEvent::subscribe([](const Event::PlayerStartDestroyBlockEvent& ev) {
         if (debugOutput) {
-            logger.info("PlayerStartDestroyBlockEvent");
+            logger.debug("PlayerStartDestroyBlockEvent");
             BlockInstance block = ev.mBlockInstance;
-            logger.info(block.getPosition().toString());
+            logger.debug(block.getPosition().toString());
         }
         return true;
     });

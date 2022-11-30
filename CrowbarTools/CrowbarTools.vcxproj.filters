@@ -21,6 +21,15 @@
     <ClInclude Include="framework.h">
       <Filter>Header</Filter>
     </ClInclude>
+    <ClInclude Include="version.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="resource1.h">
+      <Filter>Header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -32,5 +41,10 @@
     <ClCompile Include="Plugin.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="CrowbarTools.rc">
+      <Filter>Resource</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>
