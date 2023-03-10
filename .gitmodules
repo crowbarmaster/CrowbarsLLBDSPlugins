@@ -2,3 +2,7 @@
 	path = SDK
 	url = https://github.com/LiteLDev/SDK-cpp.git
 	branch = develop
+[submodule "SDK-cpp"]
+	path = SDK
+	url = https://github.com/LiteLDev/SDK-cpp.git
+	branch = main
