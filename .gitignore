@@ -363,5 +363,6 @@ MigrationBackup/
 FodyWeavers.xsd
 /SDK-submodule-update.cmd
 /a
-/SDK
 *.cmd
+/bedrock_server_api.lib
+/bedrock_server_var.lib
