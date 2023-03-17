@@ -66,12 +66,12 @@ jobs:
       run: |
         Set-PSDebug -Trace 1;
         class PluginManifest {
-          [string] Name;
-          [string] DllName;
-          [String] Version;
-          [string] Desription;
-          [string] ExtendedInfo;
-          [string] ProtectedFiles;
+          [string] $Name;
+          [string] $DllName;
+          [String] $Version;
+          [string] $Desription;
+          [string] $ExtendedInfo;
+          [string] $ProtectedFiles;
         }
         $newMani = [PluginManifest]@{ 
           Name=${{ env.PluginName }};
