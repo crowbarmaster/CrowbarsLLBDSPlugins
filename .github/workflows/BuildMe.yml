@@ -90,7 +90,7 @@ jobs:
       run: |
         Set-PSDebug -Trace 1;
         Compress-Archive .\x64\Release\*.dll .\${{ env.PluginName }}.zip;
-        Compress-Archive -Update .\PluginManifest.json" .\${{ env.PluginName }}.zip;
+        Compress-Archive -Update .\PluginManifest.json .\${{ env.PluginName }}.zip;
         Compress-Archive .\x64\Release\*.pdb .\${{ env.PluginName }}PDB.zip;
         Dir;
 
