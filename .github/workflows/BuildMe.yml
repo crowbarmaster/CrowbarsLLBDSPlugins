@@ -3,10 +3,24 @@ name: BuildLiteLoaderPlugin
 on:
   pull_request:
     types: [closed]
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
+        type: choice
+        options:
+        - info
+        - warning
+        - debug
 
 env:
   PluginName: CrowbarsLLBDSPlugins
   OutputDllName: CrowbarTools
+  Description: "A toolbox of commands for LLBDS"
+  ExtendedInfo: "Currently contains comands for inventory manipulation, multiple commands truncated to one, and tele2server control."
+  ProtectedFiles: "CrowbarTools.ini" # Use "|" for multiple entries.
 
 jobs:
   build:
@@ -22,10 +36,10 @@ jobs:
     - name: Download latest Bedrock
       run: |
         Set-PSDebug -Trace 1;
-        $content = Invoke-WebRequest -UseBasicParsing -uri "https://github.com/crowbarmaster/BedrockManagementService/raw/master/BMS_Files/bedrock_version_manifest.json";
+        $content = Invoke-WebRequest -UseBasicParsing -uri "https://github.com/crowbarmaster/BedrockManagementService/raw/master/BMS_Files/liteloader_version_manifest.json";
         $jsonObj = $content | ConvertFrom-Json;
         $latestVer = $jsonObj | Select-Object -Last 1;
-        $BDSUrl = "https://minecraft.azureedge.net/bin-win/bedrock-server-" + $latestVer.version + ".zip";
+        $BDSUrl = "https://minecraft.azureedge.net/bin-win/bedrock-server-" + $latestVer.BDSVersion + ".zip";
         Invoke-WebRequest -uri $BDSUrl -OutFile "BDS.zip";
         
     - name: Expand Bedrock
@@ -45,18 +59,38 @@ jobs:
     - name: Build Plugin
       run: |
         MSBuild.exe .\${{ env.PluginName }}.sln -property:Configuration=Release
-    
-    - name: Compress Files
-      run: |
-        Compress-Archive .\x64\Release\*.dll .\${{ env.PluginName }}.zip
-        Compress-Archive .\x64\Release\*.pdb .\${{ env.PluginName }}PDB.zip
-    
+        
     - name: Set version string
       run: |
         $TMP = (get-item .\x64\Release\${{ env.OutputDllName }}.dll).VersionInfo.FileVersion;
         echo "PROJ_VER=$TMP" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf-8 -Append;
         echo "${{ env.PROJ_VER }}"
     
+    - name: Create plugin manifest
+      run: |
+        class PluginManifest {
+          [string] Name;
+          [string] DllName;
+          [String] Version;
+          [string] Desription;
+          [string] ExtendedInfo;
+          [string] ProtectedFiles;
+        }
+        $newMani = [PluginManifest]@{ 
+          Name=${{ env.PluginName }}
+          DllName=${{ env.OutputDllName }};
+          Version=${{ env.PROJ_VER }};
+          Description=${{ env.Description }};
+          ExtendedInfo=${{ env.ExtendedInfo }};
+          ProtectedFiles=${{ env.ProtectedFiles }};
+        }
+        $newMani | ConvertTo-Json -depth 100 | Out-File "PluginManifest.json";
+        
+    - name: Compress Files
+      run: |
+        Compress-Archive -Path ".\x64\Release\*.dll, .\PluginManifest.json" .\${{ env.PluginName }}.zip
+        Compress-Archive .\x64\Release\*.pdb .\${{ env.PluginName }}PDB.zip
+
     - name: Push Automatic Release
       uses: marvinpinto/action-automatic-releases@v1.2.1
       with:
