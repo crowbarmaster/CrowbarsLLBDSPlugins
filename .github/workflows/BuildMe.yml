@@ -64,6 +64,7 @@ jobs:
     
     - name: Create plugin manifest
       run: |
+        Set-PSDebug -Trace 1;
         class PluginManifest {
           [string] Name;
           [string] DllName;
@@ -73,7 +74,7 @@ jobs:
           [string] ProtectedFiles;
         }
         $newMani = [PluginManifest]@{ 
-          Name=${{ env.PluginName }}
+          Name=${{ env.PluginName }};
           DllName=${{ env.OutputDllName }};
           Version=${{ env.PROJ_VER }};
           Description=${{ env.Description }};
