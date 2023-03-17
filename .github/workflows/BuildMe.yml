@@ -36,6 +36,7 @@ jobs:
         $jsonObj = $content | ConvertFrom-Json;
         $latestVer = $jsonObj | Select-Object -Last 1;
         $BDSUrl = "https://minecraft.azureedge.net/bin-win/bedrock-server-" + $latestVer.BDSVersion + ".zip";
+        echo "LLVersion=$lastestVer.Version" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf-8 -Append;
         Invoke-WebRequest -uri $BDSUrl -OutFile "BDS.zip";
         
     - name: Expand Bedrock
@@ -68,7 +69,8 @@ jobs:
         class PluginManifest {
           [string] $Name;
           [string] $DllName;
-          [String] $Version;
+          [string] $Version;
+          [string] $LLVersion;
           [string] $Description;
           [string] $ExtendedInfo;
           [string] $ProtectedFiles;
@@ -76,6 +78,7 @@ jobs:
         $newMani = [PluginManifest]@{ 
           Name="${{ env.PluginName }}";
           DllName="${{ env.OutputDllName }}";
+          LLVersion="${{ env.LLVersion }}"
           Version="${{ env.PROJ_VER }}";
           Description="${{ env.Description }}";
           ExtendedInfo="${{ env.ExtendedInfo }}";
