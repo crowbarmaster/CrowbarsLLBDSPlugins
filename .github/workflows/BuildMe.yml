@@ -69,7 +69,7 @@ jobs:
           [string] $Name;
           [string] $DllName;
           [String] $Version;
-          [string] $Desription;
+          [string] $Description;
           [string] $ExtendedInfo;
           [string] $ProtectedFiles;
         }
