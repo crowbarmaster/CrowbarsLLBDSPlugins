@@ -74,12 +74,12 @@ jobs:
           [string] $ProtectedFiles;
         }
         $newMani = [PluginManifest]@{ 
-          Name=${{ env.PluginName }};
-          DllName=${{ env.OutputDllName }};
-          Version=${{ env.PROJ_VER }};
-          Description=${{ env.Description }};
-          ExtendedInfo=${{ env.ExtendedInfo }};
-          ProtectedFiles=${{ env.ProtectedFiles }};
+          Name="${{ env.PluginName }}";
+          DllName="${{ env.OutputDllName }}";
+          Version="${{ env.PROJ_VER }}";
+          Description="${{ env.Description }}";
+          ExtendedInfo="${{ env.ExtendedInfo }}";
+          ProtectedFiles="${{ env.ProtectedFiles }}";
         }
         $newMani | ConvertTo-Json -depth 100 | Out-File "PluginManifest.json";
         
