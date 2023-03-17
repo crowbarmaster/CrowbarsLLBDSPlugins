@@ -85,9 +85,9 @@ jobs:
         
     - name: Compress Files
       run: |
-        Compress-Archive -Path ".\x64\Release\*.dll, .\${{ env.PluginName }}.zip
-        Compress-Archive -Update .\PluginManifest.json" .\${{ env.PluginName }}.zip
-        Compress-Archive .\x64\Release\*.pdb .\${{ env.PluginName }}PDB.zip
+        Compress-Archive -Path ".\x64\Release\*.dll -DestinationPath .\${{ env.PluginName }}.zip
+        Compress-Archive -Update .\PluginManifest.json" -DestinationPath .\${{ env.PluginName }}.zip
+        Compress-Archive -Path .\x64\Release\*.pdb -DestinationPath .\${{ env.PluginName }}PDB.zip
 
     - name: Push Automatic Release
       uses: marvinpinto/action-automatic-releases@v1.2.1
