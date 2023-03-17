@@ -1,8 +1,6 @@
 name: BuildLiteLoaderPlugin
 
 on:
-  pull_request:
-    types: [closed]
   workflow_dispatch:
     inputs:
       logLevel:
@@ -23,9 +21,7 @@ env:
   ProtectedFiles: "CrowbarTools.ini" # Use "|" for multiple entries.
 
 jobs:
-  build:
-    if: github.event.pull_request.merged == true
-    
+  build:    
     runs-on: windows-2022
     
     steps:
